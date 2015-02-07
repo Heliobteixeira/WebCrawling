@@ -36,6 +36,7 @@ def loadjsonfile(jsonfile):
         return emptyjson
     except Exception as e:
         print e
+        sys.exit('Erro ao abrir ficheiro Json')
         #pdb.set_trace()
 
 def readhtml(url):
@@ -124,7 +125,7 @@ def scraprecordsfromlistingsoup(soup):
 
     return records
 
-def saveresults(fieldname, records):
+def saveresults(fieldlabel, fieldvalue, records):
     global JSONFILE
     # Load existing json
     saveddata=loadjsonfile(JSONFILE)
@@ -135,12 +136,12 @@ def saveresults(fieldname, records):
     	id_data={}
 
     	# Only saves url if record doesnt exist.
-    	if saveddata.has_key(str(id)):
+    	if saveddata is not None and saveddata.has_key(str(id)):
     		id_data=saveddata[id]
     	else:
         	id_data['url']=url
         	
-        id_data[fieldname]=url
+        id_data[fieldlabel]=fieldvalue
 
         saveddata[str(id)]=id_data
 
@@ -165,7 +166,7 @@ def generatelistingurl(page_nbr, region_id, province_id, city_id, propertytype_i
         url+='&pt='+str(propertytype_id)
 
     if marketstatus_id>0:
-        url+='&msu='+str(propertytype_id)
+        url+='&msu='+str(marketstatus_id)
 
     url+='&page='+str(page_nbr)
 
@@ -236,7 +237,7 @@ def fetchdatafield(Field, listingdict):
             if len(records)>0:
                 COUNT+=len(records)
                 pagecount+=1
-                saveresults(fieldname, records)
+                saveresults(fieldname, name, records)
                 elapsed=time()-STARTTIME
                 parspersec=COUNT/elapsed
                 print('Fetched '+str(len(records))+ "(%s urls in %0.2f min " % (COUNT, elapsed/60.0) + " | %0.2furls/sec | " % parspersec + ')')
@@ -260,8 +261,15 @@ marketstatuses=getmarketstatus(soup)
 
 selec_regions = collectuserforsubselection(regions, '[Distrito]')
 selec_provinces = collectuserforsubselection(provinces, '[Concelho]')
+selec_cities = collectuserforsubselection(cities, '[Cidade]')
+selec_proptypes = collectuserforsubselection(propertytypes, '[Tipo Propriedade]')
+selec_mktstatus = collectuserforsubselection(marketstatuses, '[Estado Mercado]')
+
 
 fetchdatafield(Fields.REGION, selec_regions)
 fetchdatafield(Fields.PROVINCE, selec_provinces)
-      
+fetchdatafield(Fields.CITY, selec_cities)
+fetchdatafield(Fields.PROPERTYTYPE, selec_proptypes)
+fetchdatafield(Fields.MARKETSTATUS, selec_mktstatus)
+
 pdb.set_trace()
