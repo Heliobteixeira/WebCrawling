@@ -1,10 +1,12 @@
 # -*- coding: latin-1 -*-
 import json
 from bs4 import BeautifulSoup
+from pprint import pprint
+from time import time
 import urllib2
 import pdb
-from pprint import pprint
 import codecs
+import sys
 
 ADVANCEDSEARCH_URL='http://www.remax.pt/AdvancedListingSearch.aspx'
 XMLLISTING_URL='http://www.remax.pt/handlers/listinglist.ashx?Lang=pt-PT&mode=list&sc=12&tt=261&cr=2&cur=EUR&la=All&sb=PriceIncreasing'
@@ -12,6 +14,15 @@ XMLLISTING_URL='http://www.remax.pt/handlers/listinglist.ashx?Lang=pt-PT&mode=li
 JSONFILE='output/json/MinedUrls.json'
 MAXRETRIES=30
 
+STARTTIME=time()
+COUNT=0
+
+# Support for enumerations on Python<3
+def enum(*sequential, **named):
+    enums = dict(zip(sequential, range(len(sequential))), **named)
+    reverse = dict((value, key) for key, value in enums.iteritems())
+    enums['reverse_mapping'] = reverse
+    return type('Enum', (), enums)
 
 def loadjsonfile(jsonfile):
     emptyjson={}
@@ -90,29 +101,54 @@ def getpropertytypes(soup):
 
     return propertytypes
 
+def getmarketstatus(soup):
+    """ Retorna dictionary [IdTipoEstadoMercado] = 'Nome do Estado de Mercado' 
+        a partir da soup da pagina da pesquisa avançada da Remax
+    """
+    marketstatus={}
+
+    marketstatussoup=soup.find(id="ctl00_ddlmarketStatus")
+    for option in marketstatussoup.find_all('option'):
+        value=option.get('value')
+        if value<>'' and int(value)>0: 
+            marketstatus[int(value)]=option.string
+
+    return marketstatus
+
+
 def scraprecordsfromlistingsoup(soup):
-    jsonvar={}
+    records={}
     for td in soup.find_all('td', 'proplist_id'):
         a=td.find('a')
-        jsonvar[a.string]=a.get('href')
+        records[a.string]=a.get('href')
 
-    return jsonvar
+    return records
 
+def saveresults(fieldname, records):
+    global JSONFILE
+    # Load existing json
+    saveddata=loadjsonfile(JSONFILE)
+    
+    for id, url in records.items():
+    	print 'Saving:' + id + url
 
-def saveresults(province, propertytype, results, jsonfile):
-    jsonvar=loadjsonfile(jsonfile) #Load existing json
+    	id_data={}
 
-    for id, url in results.items():
-        data={}  
-        print 'Saving:' + id + url
-        data['url']=url
-        data['province']=province
-        data['propertytype']=propertytype
-        jsonvar[str(id)]=data
-        with codecs.open(jsonfile, 'w', 'utf-8') as file:    
-            json.dump(jsonvar, file, indent=4, sort_keys=False, ensure_ascii=False)
+    	# Only saves url if record doesnt exist.
+    	if saveddata.has_key(str(id)):
+    		id_data=saveddata[id]
+    	else:
+        	id_data['url']=url
+        	
+        id_data[fieldname]=url
 
-def generatelistingurl(page_nbr, region_id, province_id, city_id, propertytype_id):
+        saveddata[str(id)]=id_data
+
+        # Consider removing out of for loop
+        with codecs.open(JSONFILE, 'w', 'utf-8') as file:    
+            json.dump(saveddata, file, indent=4, sort_keys=False, ensure_ascii=False)
+
+def generatelistingurl(page_nbr, region_id, province_id, city_id, propertytype_id, marketstatus_id):
     global XMLLISTING_URL
     url=XMLLISTING_URL
     
@@ -128,41 +164,58 @@ def generatelistingurl(page_nbr, region_id, province_id, city_id, propertytype_i
     if propertytype_id>0:
         url+='&pt='+str(propertytype_id)
 
+    if marketstatus_id>0:
+        url+='&msu='+str(propertytype_id)
+
     url+='&page='+str(page_nbr)
 
     return url
 
+def collectuserforsubselection(dictlist, labelstring):
+	selecteditems = {}
+	for id, value in dictlist.items():
+	    answer = str(raw_input("Recolher dados de "+labelstring+" "+value.encode('utf-8')+"? (s/n) :"))
+	    if answer.lower() == "s":
+	        selecteditems[id]=value
+	    if answer.lower() == "t":
+	    	selecteditems=dictlist
+	    	break
 
-html=readhtml(ADVANCEDSEARCH_URL)
-soup=soupiffy(html)
+	if len(selecteditems)==0:
+	    print('Seleccionados todos '+ labelstring +' .')
+	    selecteditems=dictlist
 
-# Parse several variable IDs
-regions=getregions(soup)
-provinces=getprovinces(soup)
-cities=getcities(soup)
-propertytypes=getpropertytypes(soup)
+	pprint(selecteditems)
 
-selec_propertytypes = {}
-for propertytype_id, propertytype in propertytypes.items():
-    answer = str(raw_input("Recolher dados de propriedades do tipo "+propertytype.encode('utf-8')+"? (s/n) R:"))
-    if answer.lower() == "s":
-        selec_propertytypes[propertytype_id]=propertytype
+	return selecteditems
 
-if len(selec_propertytypes)==0:
-    print('Seleccionados todos os tipos de propriedade.')
-    selec_propertytypes=propertytypes
-
-pprint(selec_propertytypes)
-
-count=0
-for province_id, province_name in provinces.items():
-    for selec_propertytype_id, selec_propertytype in selec_propertytypes.items():
+def fetchdatafield(Field, listingdict):
+    global COUNT
+    for idcode, name in listingdict.items():
         pagecount=1
         while True:
-            print(pagecount)
+            if Field == 1: # REGION
+                url=generatelistingurl(pagecount, idcode, 0, 0, 0, 0)
+                fieldname='distrito'
+            elif Field == 2: # PROVINCE
+                url=generatelistingurl(pagecount, 0, idcode, 0, 0, 0)
+                fieldname='concelho'
+            elif Field == 3: # CITY
+                url=generatelistingurl(pagecount, 0, 0, idcode, 0, 0)
+                fieldname='cidade'
+            elif Field == 4: # PROPERTY TYPE
+                url=generatelistingurl(pagecount, 0, 0, 0, idcode, 0)
+                fieldname='tipo_propriedade'
+            elif Field == 5: # MARKET STATUS
+                url=generatelistingurl(pagecount, 0, 0, 0, 0, idcode)
+                fieldname='estado_mercado'
+            else:
+            	sys.exit('Campo desconhecido. Abortando...')
+
+
+            print('Parsing: ', url)
             errorcount=0
             while errorcount<MAXRETRIES:      
-                url=generatelistingurl(pagecount, 0, province_id, 0, selec_propertytype_id)
                 jsondata=json.loads(readhtml(url))       
                 try:
                     soup=soupiffy(jsondata['llContentContainerHtml'])
@@ -179,15 +232,36 @@ for province_id, province_name in provinces.items():
                     continue
                 break
 
-            jsonresults=scraprecordsfromlistingsoup(soup)
-            if len(jsonresults)>0:
-                count+=len(jsonresults)
+            records=scraprecordsfromlistingsoup(soup)
+            if len(records)>0:
+                COUNT+=len(records)
                 pagecount+=1
-                saveresults(province_name, selec_propertytype, jsonresults, JSONFILE)
+                saveresults(fieldname, records)
+                elapsed=time()-STARTTIME
+                parspersec=COUNT/elapsed
+                print('Fetched '+str(len(records))+ "(%s urls in %0.2f min " % (COUNT, elapsed/60.0) + " | %0.2furls/sec | " % parspersec + ')')
             else:
                 print('No results found. Skipping to next...')
-                break
+                break        
 
-            #saveurl(province_id, selec_propertytype, id, url, jsonfile)
-print('Nº Total de Registos:'+str(count))        
+
+Fields=enum('URL', 'REGION', 'PROVINCE', 'CITY', 'PROPERTYTYPE', 'MARKETSTATUS')
+
+html=readhtml(ADVANCEDSEARCH_URL)
+soup=soupiffy(html)
+
+# Parse several variable IDs
+
+regions=getregions(soup)
+provinces=getprovinces(soup)
+cities=getcities(soup)
+propertytypes=getpropertytypes(soup)
+marketstatuses=getmarketstatus(soup)
+
+selec_regions = collectuserforsubselection(regions, '[Distrito]')
+selec_provinces = collectuserforsubselection(provinces, '[Concelho]')
+
+fetchdatafield(Fields.REGION, selec_regions)
+fetchdatafield(Fields.PROVINCE, selec_provinces)
+      
 pdb.set_trace()
