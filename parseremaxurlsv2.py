@@ -10,8 +10,10 @@ import sys
 
 ADVANCEDSEARCH_URL='http://www.remax.pt/AdvancedListingSearch.aspx'
 XMLLISTING_URL='http://www.remax.pt/handlers/listinglist.ashx?Lang=pt-PT&mode=list&sc=12&tt=261&cr=2&cur=EUR&la=All&sb=PriceIncreasing'
+XMLLISTING_URL_ARRENDAM = 'http://www.remax.pt/handlers/listinglist.ashx?Lang=pt-PT&mode=list&sc=12&tt=260&cr=2&cur=EUR&la=All&sb=PriceIncreasing'
 
-JSONFILE='output/json/MinedUrls.json'
+
+JSONFILE='output/json/mined_url_out_arr.json'
 MAXRETRIES=30
 
 STARTTIME=time()
@@ -116,6 +118,34 @@ def getmarketstatus(soup):
 
     return marketstatus
 
+def getpropertycategories(soup):
+    """ Retorna dictionary [IdCategoriaImovel] = 'Nome da Categoria do Imóvel' 
+        a partir da soup da pagina da pesquisa avançada da Remax
+    """
+    propertycategories={}
+
+    propertycategoriessoup=soup.find(id="ctl00_ddlPropertyCategory")
+    for option in propertycategoriessoup.find_all('option'):
+        value=option.get('value')
+        if value<>'' and int(value)>0: 
+            propertycategories[int(value)]=option.string
+
+    return propertycategories
+
+def getdevelopments(soup):
+    """ Retorna dictionary [IdCategoriaImovel] = 'Nome da Categoria do Imóvel' 
+        a partir da soup da pagina da pesquisa avançada da Remax
+    """
+    developments={}
+
+    developmentssoup=soup.find(id="ctl00_ddlDevelopmentsAS")
+    for option in developmentssoup.find_all('option'):
+        value=option.get('value')
+        if value<>'' and int(value)>0: 
+            developments[int(value)]=option.string
+
+    return developments
+
 
 def scraprecordsfromlistingsoup(soup):
     records={}
@@ -125,34 +155,38 @@ def scraprecordsfromlistingsoup(soup):
 
     return records
 
-def saveresults(fieldlabel, fieldvalue, records):
+def saveresults(fieldlabel, fieldvalue, records, allowcreateid=True):
     global JSONFILE
     # Load existing json
     saveddata=loadjsonfile(JSONFILE)
     
     for id, url in records.items():
-    	print 'Saving:' + id + url
+    	#print 'Saving:' + id + url
 
     	id_data={}
 
     	# Only saves url if record doesnt exist.
     	if saveddata is not None and saveddata.has_key(str(id)):
     		id_data=saveddata[id]
-    	else:
+    	elif allowcreateid is True:
         	id_data['url']=url
+        else:
+            continue
         	
         id_data[fieldlabel]=fieldvalue
 
         saveddata[str(id)]=id_data
 
-        # Consider removing out of for loop
-        with codecs.open(JSONFILE, 'w', 'utf-8') as file:    
-            json.dump(saveddata, file, indent=4, sort_keys=False, ensure_ascii=False)
+    with codecs.open(JSONFILE, 'w', 'utf-8') as file:    
+        json.dump(saveddata, file, indent=4, sort_keys=False, ensure_ascii=False)
 
-def generatelistingurl(page_nbr, region_id, province_id, city_id, propertytype_id, marketstatus_id):
+def generatelistingurl(page_nbr, region_id, province_id, city_id, propertytype_id, marketstatus_id, propertycategory_id, development_id):
     global XMLLISTING_URL
-    url=XMLLISTING_URL
-    
+    global XMLLISTING_URL_ARRENDAM
+    ##url=XMLLISTING_URL
+    url = XMLLISTING_URL_ARRENDAM
+
+
     if region_id>0:
         url+='&r='+str(region_id)
 
@@ -167,6 +201,12 @@ def generatelistingurl(page_nbr, region_id, province_id, city_id, propertytype_i
 
     if marketstatus_id>0:
         url+='&msu='+str(marketstatus_id)
+
+    if propertycategory_id>0:
+        url+='&pc='+str(propertycategory_id)
+
+    if development_id>0:
+        url+='&d='+str(development_id)
 
     url+='&page='+str(page_nbr)
 
@@ -190,31 +230,42 @@ def collectuserforsubselection(dictlist, labelstring):
 
 	return selecteditems
 
-def fetchdatafield(Field, listingdict):
+def fetchdatafield(Field, listingdict, allowcreateid=True):
+    """
+    allowcreateid -> if set to True (default) allows the creating of the key/id if it doesn't exist
+    """
     global COUNT
     for idcode, name in listingdict.items():
+    	print('Searching by:'+name)
         pagecount=1
         while True:
+            print('Page #'+str(pagecount))
             if Field == 1: # REGION
-                url=generatelistingurl(pagecount, idcode, 0, 0, 0, 0)
+                url=generatelistingurl(pagecount, idcode, 0, 0, 0, 0, 0, 0)
                 fieldname='distrito'
             elif Field == 2: # PROVINCE
-                url=generatelistingurl(pagecount, 0, idcode, 0, 0, 0)
+                url=generatelistingurl(pagecount, 0, idcode, 0, 0, 0, 0, 0)
                 fieldname='concelho'
             elif Field == 3: # CITY
-                url=generatelistingurl(pagecount, 0, 0, idcode, 0, 0)
+                url=generatelistingurl(pagecount, 0, 0, idcode, 0, 0, 0, 0)
                 fieldname='cidade'
             elif Field == 4: # PROPERTY TYPE
-                url=generatelistingurl(pagecount, 0, 0, 0, idcode, 0)
+                url=generatelistingurl(pagecount, 0, 0, 0, idcode, 0, 0, 0)
                 fieldname='tipo_propriedade'
             elif Field == 5: # MARKET STATUS
-                url=generatelistingurl(pagecount, 0, 0, 0, 0, idcode)
+                url=generatelistingurl(pagecount, 0, 0, 0, 0, idcode, 0, 0)
                 fieldname='estado_mercado'
+            elif Field == 6: # PROPERTY CATEGORY
+                url=generatelistingurl(pagecount, 0, 0, 0, 0, 0, idcode, 0)
+                fieldname='categoria_propriedade'
+            elif Field == 7: # DEVELOPMENT
+                url=generatelistingurl(pagecount, 0, 0, 0, 0, 0, 0, idcode)
+                fieldname='empreendimento'
             else:
             	sys.exit('Campo desconhecido. Abortando...')
 
 
-            print('Parsing: ', url)
+            #print('Parsing: ', url)
             errorcount=0
             while errorcount<MAXRETRIES:      
                 jsondata=json.loads(readhtml(url))       
@@ -237,7 +288,7 @@ def fetchdatafield(Field, listingdict):
             if len(records)>0:
                 COUNT+=len(records)
                 pagecount+=1
-                saveresults(fieldname, name, records)
+                saveresults(fieldname, name, records, allowcreateid)
                 elapsed=time()-STARTTIME
                 parspersec=COUNT/elapsed
                 print('Fetched '+str(len(records))+ "(%s urls in %0.2f min " % (COUNT, elapsed/60.0) + " | %0.2furls/sec | " % parspersec + ')')
@@ -246,7 +297,7 @@ def fetchdatafield(Field, listingdict):
                 break        
 
 
-Fields=enum('URL', 'REGION', 'PROVINCE', 'CITY', 'PROPERTYTYPE', 'MARKETSTATUS')
+Fields=enum('URL', 'REGION', 'PROVINCE', 'CITY', 'PROPERTYTYPE', 'MARKETSTATUS', 'PROPERTYCATEGORY', 'DEVELOPMENT')
 
 html=readhtml(ADVANCEDSEARCH_URL)
 soup=soupiffy(html)
@@ -258,12 +309,16 @@ provinces=getprovinces(soup)
 cities=getcities(soup)
 propertytypes=getpropertytypes(soup)
 marketstatuses=getmarketstatus(soup)
+propertycategories=getpropertycategories(soup)
+developments=getdevelopments(soup)
 
 selec_regions = collectuserforsubselection(regions, '[Distrito]')
 selec_provinces = collectuserforsubselection(provinces, '[Concelho]')
 selec_cities = collectuserforsubselection(cities, '[Cidade]')
 selec_proptypes = collectuserforsubselection(propertytypes, '[Tipo Propriedade]')
 selec_mktstatus = collectuserforsubselection(marketstatuses, '[Estado Mercado]')
+selec_propertycategories = collectuserforsubselection(propertycategories, '[Categoria Imovel]')
+selec_developments = collectuserforsubselection(developments, '[Empreendimento]')
 
 
 fetchdatafield(Fields.REGION, selec_regions)
@@ -271,5 +326,8 @@ fetchdatafield(Fields.PROVINCE, selec_provinces)
 fetchdatafield(Fields.CITY, selec_cities)
 fetchdatafield(Fields.PROPERTYTYPE, selec_proptypes)
 fetchdatafield(Fields.MARKETSTATUS, selec_mktstatus)
+fetchdatafield(Fields.PROPERTYCATEGORY, selec_propertycategories)
+fetchdatafield(Fields.DEVELOPMENT, selec_developments)
+
 
 pdb.set_trace()

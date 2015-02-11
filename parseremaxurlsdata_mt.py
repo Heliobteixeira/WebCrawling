@@ -14,16 +14,21 @@ from Queue import Queue, Empty
 from threading import Thread
 from threading import Lock
 import codecs
+import urlparse
 
 STARTTIME=time()
 COUNT=0
 LASTSAVE=time()
 MAXSAVEINTERVAL=60  # seconds
 JSONDATA={}
+URLPREFIX = 'http://www.remax.pt'
+TIPOSPROPRIEDADE=['Apartamento', 'Moradia/Vivenda', 'Duplex']
+
+
 
 inputdir='output/json/'
 outputdir='output/json/'
-jsonfile='mined_urls_classNC.json'
+jsonfile='mined_urls_arr.json'
 
 
 def getspecimenlinks(soup):
@@ -140,40 +145,64 @@ class ThreadMechanizeUrl(Thread):
         global COUNT
         global JSONDATA
         global LASTSAVE
+        global URLPREFIX
 
         while True:
+            (id, data)=self.queue.get()
+
+            if 'tipo_propriedade' in data and data['tipo_propriedade'].strip() not in TIPOSPROPRIEDADE:
+                print('Not needed. Skipping to next...')
+                self.queue.task_done()
+                continue
+
             elapsed=time()-STARTTIME
             parspersec=COUNT/elapsed
-            (id, url)=self.queue.get()
-            data={}
+            # data={}
             print "%s urls in %0.2f min " % (COUNT, elapsed/60.0) + " | %0.2furls/sec | " % parspersec +'Parsing:'+id
             (br, cj)=newconfbrowser()
             
             try:
+                url=URLPREFIX+data['url']
                 html=br.open(url).read()
                 #pdb.set_trace()
             except:
-                print id+' unavailable'
+                print url+'!! UNAVAILABLE !!'
+                self.queue.task_done()
                 continue
             else:       
                 soup=BeautifulSoup(html)
                 
                 # Default values
+                data['url']=url
+                data['header']=""
                 data['titulo']=""
                 data['preco']=""
                 data['properties']=""
                 data['desc']=""
                 data['erate']=""
-                data['url']=""
                 data['lat']=""
                 data['lng']=""
+                data['address']=""
+                data['agentname']=""
+                data['agentid']=""
+                data['agentaddress']=""
+                data['features']=[]
 
-
+                cabecalho=soup.find(id='ctl00_h1PropertyDetailsTitle')
                 title=soup.find(id='ctl00_lblListingTitle')
                 price=soup.find(attrs={"class":"key-price"})
                 properties=parsetabledata(soup)
                 desc=soup.find(attrs={"class":'desc-short'})
                 erating=soup.find(attrs={"id":'ctl02_imgEnergyRating'})
+                address=soup.find(attrs={"class":"key-address-td"})
+                agentcard=soup.find(attrs={"class":"agentcard-main"})
+                features=soup.find_all(class_="feature-item")
+
+                try:
+                    data['header']=cabecalho.text
+                except:
+                    print 'Error parsing header of '+id
+                    pass
 
                 try:
                     data['titulo']=title.text
@@ -207,9 +236,38 @@ class ThreadMechanizeUrl(Thread):
                     pass
 
                 try:
-                    data['url']=url
+                    data['address']=address.next_element.strip()
                 except:
-                    print 'Error parsing url of '+id
+                    print 'Error parsing address of '+id
+                    pass
+
+                try:
+                    data['agentname']=agentcard.h3.text
+                except:
+                    print 'Error parsing agentname of '+id
+                    pass
+
+                try:
+                    agenthref=agentcard.h3.a['href']
+                    parsedurl=urlparse.urlparse(agenthref)
+                    getvars=urlparse.parse_qs(parsedurl.query)
+                    data['agentid']=getvars['AgentID'][0]
+                except:
+                    print 'Error parsing agentid of '+id
+                    pass
+
+                try:
+                    agentaddress=agentcard.find(attrs={"class":"agentcard-address"})
+                    data['agentaddress']=u' '.join( [unicode(navstring).strip() for navstring in agentaddress.strings] )
+                except:
+                    print 'Error parsing agentaddress of '+id
+                    pass
+
+                try:
+                    for feature in features:
+                        data['features'].append(feature.text)
+                except:
+                    print 'Error parsing features of '+id
                     pass
 
                 try:
@@ -223,14 +281,15 @@ class ThreadMechanizeUrl(Thread):
                 # Adds data
                 JSONDATA[id]=data
 
-                self.lock.acquire()
+                
 
                 if (time()-LASTSAVE) > MAXSAVEINTERVAL:
+                    self.lock.acquire()
                     savedata(copy(JSONDATA), outputjsonfile)
+                    self.lock.release()
                     LASTSAVE=time()
                     print "Data saved..."
 
-                self.lock.release()
                 COUNT+=1
                 self.queue.task_done()
 
@@ -238,8 +297,7 @@ class ThreadMechanizeUrl(Thread):
         savedata(copy(JSONDATA), outputjsonfile)
         self.lock.release()
         print "End of task"
-        
-            
+                  
         
 print 'Started...'
 
@@ -255,13 +313,15 @@ for i in range(5):
     t.setDaemon(True)
     t.start()
     
-for id, url in urls.items():
+for id, value in urls.items():
     if id in JSONDATA:
         print id+' already parsed. Continuing to the next one...'
     else:
         try:
-            queue.put((id, url))      
+            queue.put((id, value))
+            #pdb.set_trace()
         except KeyboardInterrupt:
             print "Stopping..."
+
 queue.join()
 savedata(copy(JSONDATA), outputjsonfile)
