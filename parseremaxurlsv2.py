@@ -43,6 +43,7 @@ def loadjsonfile(jsonfile):
 
 def readhtml(url):
     fp=urllib2.urlopen(url)
+    ## socket.error: [Errno 54] Connection reset by peer (happens sometimes) -> Maybe using try loop??
     return fp.read()
     
 def soupiffy(html):
@@ -183,8 +184,8 @@ def saveresults(fieldlabel, fieldvalue, records, allowcreateid=True):
 def generatelistingurl(page_nbr, region_id, province_id, city_id, propertytype_id, marketstatus_id, propertycategory_id, development_id):
     global XMLLISTING_URL
     global XMLLISTING_URL_ARRENDAM
-    ##url=XMLLISTING_URL
-    url = XMLLISTING_URL_ARRENDAM
+    url=XMLLISTING_URL
+    ##url = XMLLISTING_URL_ARRENDAM
 
 
     if region_id>0:
@@ -304,16 +305,16 @@ soup=soupiffy(html)
 
 # Parse several variable IDs
 
-regions=getregions(soup)
-provinces=getprovinces(soup)
+##regions=getregions(soup)
+##provinces=getprovinces(soup)
 cities=getcities(soup)
 propertytypes=getpropertytypes(soup)
 marketstatuses=getmarketstatus(soup)
 propertycategories=getpropertycategories(soup)
 developments=getdevelopments(soup)
 
-selec_regions = collectuserforsubselection(regions, '[Distrito]')
-selec_provinces = collectuserforsubselection(provinces, '[Concelho]')
+##selec_regions = collectuserforsubselection(regions, '[Distrito]')
+##selec_provinces = collectuserforsubselection(provinces, '[Concelho]')
 selec_cities = collectuserforsubselection(cities, '[Cidade]')
 selec_proptypes = collectuserforsubselection(propertytypes, '[Tipo Propriedade]')
 selec_mktstatus = collectuserforsubselection(marketstatuses, '[Estado Mercado]')
@@ -321,8 +322,8 @@ selec_propertycategories = collectuserforsubselection(propertycategories, '[Cate
 selec_developments = collectuserforsubselection(developments, '[Empreendimento]')
 
 
-fetchdatafield(Fields.REGION, selec_regions)
-fetchdatafield(Fields.PROVINCE, selec_provinces)
+##fetchdatafield(Fields.REGION, selec_regions)
+##fetchdatafield(Fields.PROVINCE, selec_provinces)
 fetchdatafield(Fields.CITY, selec_cities)
 fetchdatafield(Fields.PROPERTYTYPE, selec_proptypes)
 fetchdatafield(Fields.MARKETSTATUS, selec_mktstatus)

@@ -192,7 +192,7 @@ class ThreadMechanizeUrl(Thread):
                 title=soup.find(id='ctl00_lblListingTitle')
                 price=soup.find(attrs={"class":"key-price"})
                 properties=parsetabledata(soup)
-                desc=soup.find(attrs={"class":'desc-short'})
+                desc=soup.find(attrs={"class":'desc-long'})
                 erating=soup.find(attrs={"id":'ctl02_imgEnergyRating'})
                 address=soup.find(attrs={"class":"key-address-td"})
                 agentcard=soup.find(attrs={"class":"agentcard-main"})
